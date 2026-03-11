@@ -80,3 +80,25 @@ class DenseLayer(Layer):
     
     def output_shape(self):
          return (self.n_units,)
+
+class DropoutLayer(Layer):
+    def __init__(self, dropout_rate=0.2):
+        super().__init__()
+        self.dropout_rate = dropout_rate
+        self.mask = None
+    
+    def forward_propagation(self, inputs, training=True):
+        if training:
+            self.mask = np.random.binomial(1, 1 - self.dropout_rate, size=inputs.shape)
+            return (inputs * self.mask) / (1 - self.dropout_rate)
+        else:
+            return inputs
+    
+    def backward_propagation(self, output_error):
+        return (output_error * self.mask) / (1 - self.dropout_rate)
+    
+    def output_shape(self):
+        return self._input_shape 
+    
+    def parameters(self):
+        return 0

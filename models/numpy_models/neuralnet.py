@@ -11,13 +11,15 @@ class NeuralNetwork:
  
     def __init__(self, epochs=100, batch_size=128, optimizer=None,
                  learning_rate=0.01, momentum=0.90, verbose=False, 
-                 loss=MeanSquaredError, metric:callable=mse):
+                 loss=MeanSquaredError, metric:callable=mse, patience=10):
         self.epochs = epochs
         self.batch_size = batch_size
         self.optimizer = Optimizer(learning_rate=learning_rate, momentum=momentum)
         self.verbose = verbose
         self.loss = loss()
         self.metric = metric
+        self.patience = patience
+
 
         self.layers = []
         self.history = {}
@@ -52,6 +54,8 @@ class NeuralNetwork:
     def fit(self, dataset):
         X = dataset.X
         y = dataset.y
+        best_loss = np.inf
+        wait = 0 
 
         for epoch in range(1, self.epochs + 1):
             epoch_loss = 0
@@ -60,34 +64,39 @@ class NeuralNetwork:
                 # 1. Forward propagation
                 output = self.forward_propagation(X_batch, training=True)
                 
-                # 2. Calcula o erro da Loss Function
+                # 2. Cálculo da Loss
                 epoch_loss += self.loss.loss(y_batch, output)
                 error = self.loss.derivative(y_batch, output)
                 
-                # 3. Backward propagation
+                # 3. Backward propagation (Onde a rede aprende)
                 for layer in reversed(self.layers):
                     error = layer.backward_propagation(error)
             
-            # Avaliação por Epoch
-            loss = epoch_loss / (X.shape[0] / self.batch_size)
-            output_x_all = self.predict(dataset)
+            # Perda média desta época
+            current_loss = epoch_loss / (X.shape[0] / self.batch_size)
             
-            if self.metric is not None:
-                metric = self.metric(y, output_x_all)
-                metric_s = f"{self.metric.__name__}: {metric:.4f}"
+            # LÓGICA DE EARLY STOPPING 
+            if current_loss < best_loss:
+                best_loss = current_loss
+                wait = 0  # Reset se a rede melhorou
             else:
-                metric_s = "NA"
-                metric = 'NA'
-
-            self.history[epoch] = {'loss': loss, 'metric': metric}
+                wait += 1  # Incrementa se a rede não melhorou
+                if wait >= self.patience:
+                    if self.verbose:
+                        print(f"\n[Early Stopping] O treino parou na época {epoch}. Melhor Loss: {best_loss:.4f}")
+                    break
+            
+            # Calcular métrica (Accuracy) para o histórico
+            all_preds = self.predict(X)
+            current_metric = self.metric(y, all_preds)
+            self.history[epoch] = {'loss': current_loss, 'metric': current_metric}
 
             if self.verbose and (epoch % 10 == 0 or epoch == 1):
-                print(f"Epoch {epoch}/{self.epochs} - loss: {loss:.4f} - {metric_s}")
-
+                print(f"Epoch {epoch}/{self.epochs} - loss: {current_loss:.4f} - {self.metric.__name__}: {current_metric:.4f}")
+        
         return self
 
     def predict(self, dataset):
-        # Aqui podemos passar um dataset formatado ou uma matriz X
         X = dataset.X if hasattr(dataset, 'X') else dataset
         return self.forward_propagation(X, training=False)
 
