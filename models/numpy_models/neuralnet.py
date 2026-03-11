@@ -51,48 +51,58 @@ class NeuralNetwork:
             output = layer.forward_propagation(output, training=training)
         return output
 
-    def fit(self, dataset):
+    def fit(self, dataset, val_dataset=None): # Adicionado val_dataset
         X = dataset.X
         y = dataset.y
-        best_loss = np.inf
+        best_val_loss = np.inf
         wait = 0 
 
         for epoch in range(1, self.epochs + 1):
             epoch_loss = 0
             
+            # Treino (Batch Processing)
             for X_batch, y_batch in self.get_mini_batches(X, y):
-                # 1. Forward propagation
                 output = self.forward_propagation(X_batch, training=True)
-                
-                # 2. Cálculo da Loss
                 epoch_loss += self.loss.loss(y_batch, output)
                 error = self.loss.derivative(y_batch, output)
                 
-                # 3. Backward propagation (Onde a rede aprende)
                 for layer in reversed(self.layers):
                     error = layer.backward_propagation(error)
             
-            # Perda média desta época
-            current_loss = epoch_loss / (X.shape[0] / self.batch_size)
+            # Perda média de treino
+            train_loss = epoch_loss / (X.shape[0] / self.batch_size)
             
-            # LÓGICA DE EARLY STOPPING 
-            if current_loss < best_loss:
-                best_loss = current_loss
-                wait = 0  # Reset se a rede melhorou
+            # CÁLCULO DA VALIDAÇÃO (Opcional mas crucial)
+            val_loss = None
+            if val_dataset is not None:
+                val_output = self.forward_propagation(val_dataset.X, training=False)
+                val_loss = self.loss.loss(val_dataset.y, val_output)
+            
+            # LÓGICA DE EARLY STOPPING (Agora baseada na Validação se existir)
+            monitor_loss = val_loss if val_loss is not None else train_loss
+            
+            if monitor_loss < best_val_loss:
+                best_val_loss = monitor_loss
+                wait = 0
             else:
-                wait += 1  # Incrementa se a rede não melhorou
+                wait += 1
                 if wait >= self.patience:
                     if self.verbose:
-                        print(f"\n[Early Stopping] O treino parou na época {epoch}. Melhor Loss: {best_loss:.4f}")
+                        print(f"\n[Early Stopping] Parou na época {epoch}. Melhor Val Loss: {best_val_loss:.4f}")
                     break
             
-            # Calcular métrica (Accuracy) para o histórico
+            # Guardar no histórico para os teus gráficos
             all_preds = self.predict(X)
             current_metric = self.metric(y, all_preds)
-            self.history[epoch] = {'loss': current_loss, 'metric': current_metric}
+            self.history[epoch] = {
+                'loss': train_loss, 
+                'val_loss': val_loss if val_loss is not None else 0,
+                'metric': current_metric
+            }
 
             if self.verbose and (epoch % 10 == 0 or epoch == 1):
-                print(f"Epoch {epoch}/{self.epochs} - loss: {current_loss:.4f} - {self.metric.__name__}: {current_metric:.4f}")
+                val_str = f" - val_loss: {val_loss:.4f}" if val_loss is not None else ""
+                print(f"Epoch {epoch}/{self.epochs} - loss: {train_loss:.4f}{val_str} - {self.metric.__name__}: {current_metric:.4f}")
         
         return self
 
