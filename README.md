@@ -1,4 +1,4 @@
-# Projeto de NLP: Deteção de Texto Humano vs IA
+# Projeto de AP: Deteção de Texto Humano vs IA
 
 Este repositório contém o trabalho desenvolvido para a unidade curricular de **Processamento de Linguagem Natural**. O objetivo do projeto é classificar textos entre 5 autores: **Humano, Google, Meta, Mistral e OpenAI**.
 
