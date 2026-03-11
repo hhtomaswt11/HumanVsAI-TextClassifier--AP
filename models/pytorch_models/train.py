@@ -1,0 +1,155 @@
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+
+
+# Device
+def _get_device() -> torch.device:
+    if torch.cuda.is_available():
+        try:
+            # Verifica se o GPU é compatível com o CUDA
+            _ = torch.zeros(1).cuda() + 1
+            return torch.device("cuda")
+        except Exception:
+            pass
+    return torch.device("cpu")
+
+DEVICE = _get_device()
+print(f"[pytorch_models] Using device: {DEVICE}")
+
+
+# Treino
+
+def train(
+    model: nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    criterion: nn.Module = None,
+    epochs: int = 50,
+    lr: float = 0.001,
+    patience: int = 10,
+    verbose: bool = True,
+) -> dict:
+
+    # model: modelo a ser treinado
+    # train_loader: DataLoader para dados de treino
+    # val_loader: DataLoader para dados de validação
+    # criterion: função de perda (default: CrossEntropyLoss)
+    # epochs: número máximo de épocas
+    # lr: taxa de aprendizado para Adam
+    # patience: paciência de early-stopping (épocas sem melhora)
+    # verbose: se True, imprime métricas a cada época
+
+    if criterion is None:
+        criterion = nn.CrossEntropyLoss()
+
+    model.to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    history = {
+        "train_loss": [],
+        "val_loss": [],
+        "train_acc": [],
+        "val_acc": [],
+    }
+
+    best_val_loss = float("inf")
+    wait = 0
+
+    for epoch in range(1, epochs + 1):
+        # Training step
+        model.train()
+        for x_batch, y_batch in train_loader:
+            x_batch = x_batch.to(DEVICE)
+            y_batch = y_batch.to(DEVICE)
+
+            optimizer.zero_grad()
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+
+        # Evaluation
+        train_loss, train_acc = evaluate(model, train_loader, criterion)
+        val_loss, val_acc = evaluate(model, val_loader, criterion)
+
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        history["train_acc"].append(train_acc)
+        history["val_acc"].append(val_acc)
+
+        if verbose:
+            print(
+                f"Epoch {epoch}/{epochs} | "
+                f"train_loss: {train_loss:.4f} | train_acc: {train_acc:.4f} | "
+                f"val_loss: {val_loss:.4f} | val_acc: {val_acc:.4f}"
+            )
+
+        # Early stopping
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            wait = 0
+        else:
+            wait += 1
+            if wait >= patience:
+                if verbose:
+                    print(
+                        f"\n[Early Stopping] Stopped at epoch {epoch}. "
+                        f"Best val_loss: {best_val_loss:.4f}"
+                    )
+                break
+
+    return history
+
+
+# Avaliação
+
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module = None,
+) -> tuple[float, float]:
+    if criterion is None:
+        criterion = nn.CrossEntropyLoss()
+
+    model.eval()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for x_batch, y_batch in loader:
+            x_batch = x_batch.to(DEVICE)
+            y_batch = y_batch.to(DEVICE)
+
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            total_loss += loss.item()
+
+            preds = outputs.argmax(dim=1)
+            correct += (preds == y_batch).sum().item()
+            total += y_batch.size(0)
+
+    avg_loss = total_loss / len(loader)
+    accuracy = correct / total
+    return avg_loss, accuracy
+
+
+# Prediction
+
+def predict(
+    model: nn.Module,
+    loader: DataLoader,
+) -> torch.Tensor:
+
+    model.eval()
+    all_preds = []
+
+    with torch.no_grad():
+        for x_batch, _ in loader:
+            x_batch = x_batch.to(DEVICE)
+            outputs = model(x_batch)
+            preds = outputs.argmax(dim=1)
+            all_preds.append(preds.cpu())
+
+    return torch.cat(all_preds)
