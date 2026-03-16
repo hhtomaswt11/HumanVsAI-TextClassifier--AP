@@ -9,17 +9,32 @@ load_dotenv()
 from groq import Groq
 import google.generativeai as genai
 
+CONTENT_TYPE_JSON = "application/json"
 
-GROQ_API_KEY    = os.environ["GROQ_API_KEY"]
-GEMINI_API_KEY  = os.environ["GEMINI_API_KEY"]
-MISTRAL_API_KEY = os.environ["MISTRAL_API_KEY"]
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-groq_client = Groq(api_key=GROQ_API_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemma-3-27b-it")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+gemini_model = None
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel("gemma-3-27b-it")
+
+if not GROQ_API_KEY:
+    print("Aviso: GROQ_API_KEY em falta. A classe 'Meta' será ignorada.")
+if not MISTRAL_API_KEY:
+    print("Aviso: MISTRAL_API_KEY em falta. A classe 'Mistral' será ignorada.")
+if not GEMINI_API_KEY:
+    print("Aviso: GEMINI_API_KEY em falta. A classe 'Google' será ignorada.")
+if not ANTHROPIC_API_KEY:
+    print("Aviso: ANTHROPIC_API_KEY em falta. A classe 'Anthropic' será ignorada.")
 
 # 2. Funções de Geração 
 def gerar_groq(modelo, texto_original):
+    if not groq_client:
+        return None
     prompt = (
         "You are an expert scientist. Rewrite the following scientific text in your own words. "
         "The new text MUST be strictly between 80 and 160 words long. "
@@ -40,6 +55,8 @@ def gerar_groq(modelo, texto_original):
         return None
 
 def gerar_mistral(texto_original):
+    if not MISTRAL_API_KEY:
+        return None
     prompt = (
         "You are an expert scientist. Rewrite the following scientific text in your own words. "
         "The new text MUST be strictly between 80 and 160 words long. "
@@ -50,7 +67,7 @@ def gerar_mistral(texto_original):
     
     url = "https://api.mistral.ai/v1/chat/completions"
     headers = {
-        "Content-Type": "application/json",
+        "Content-Type": CONTENT_TYPE_JSON,
         "Accept": "application/json",
         "Authorization": f"Bearer {MISTRAL_API_KEY}"
     }
@@ -72,6 +89,44 @@ def gerar_mistral(texto_original):
         print(f"Erro Mistral Python: {e}")
         return None
 
+def gerar_anthropic(texto_original):
+    if not ANTHROPIC_API_KEY:
+        return None
+    prompt = (
+        "You are an expert scientist. Rewrite the following scientific text in your own words. "
+        "The new text MUST be strictly between 80 and 160 words long. "
+        "Maintain a formal, scientific and encyclopedia-style tone. "
+        "Do not include titles, introductory remarks, concluding remarks, or the word count. "
+        f"Original text to rewrite:\n{texto_original}"
+    )
+
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "Content-Type": CONTENT_TYPE_JSON,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+    }
+    data = {
+        "model": "claude-haiku-4-5",
+        "max_tokens": 250,
+        "temperature": 0.7,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
+            content = response.json().get("content", [])
+            if content and content[0].get("type") == "text":
+                return content[0].get("text", "").strip()
+            print(f"Erro Anthropic: resposta sem texto esperado - {response.text}")
+            return None
+        print(f"Erro Anthropic (Status {response.status_code}): {response.text}")
+        return None
+    except Exception as e:
+        print(f"Erro Anthropic Python: {e}")
+        return None
+
 def truncar_para_limite(texto, max_palavras=160):
     """Se o texto tiver mais de max_palavras, corta na última frase que caiba."""
     palavras = texto.split()
@@ -85,6 +140,8 @@ def truncar_para_limite(texto, max_palavras=160):
     return texto_cortado.strip()
 
 def gerar_gemma(texto_original):
+    if not gemini_model:
+        return None
     prompt = (
         "You are an expert scientist. Write a single paragraph that rewrites the following scientific text in your own words. "
         "CRITICAL RULES: (1) Write ONLY ONE paragraph with NO line breaks. "
@@ -107,11 +164,12 @@ modelos_para_gerar = {
     "Meta":    "llama-3.1-8b-instant",
     "Mistral": "mistral-small-latest",
     "Google":  "gemma-3-27b-it",
+    "Anthropic": "claude-haiku-4-5",
 }
 
 OBJETIVO_POR_MODELO = 600
 
-NOME_FICHEIRO = "dataset_human_openai_pronto.csv" 
+NOME_FICHEIRO = "../data/dataset_final.csv" 
 print(f"A carregar o ficheiro: {NOME_FICHEIRO}...")
 
 try:
@@ -128,7 +186,18 @@ except FileNotFoundError:
 
 print("\nA iniciar a reescrita de dados sintéticos...")
 
+chave_necessaria_por_label = {
+    "Meta": GROQ_API_KEY,
+    "Mistral": MISTRAL_API_KEY,
+    "Google": GEMINI_API_KEY,
+    "Anthropic": ANTHROPIC_API_KEY,
+}
+
 for label, nome_modelo in modelos_para_gerar.items():
+    if not chave_necessaria_por_label.get(label):
+        print(f"\n--- A IGNORAR A CLASSE: {label} (API key em falta) ---")
+        continue
+
     textos_validos = sum(1 for linha in resultados if linha['Label'] == label)
     
     print(f"\n--- A GERAR PARA A CLASSE: {label} ---")
@@ -143,6 +212,9 @@ for label, nome_modelo in modelos_para_gerar.items():
         if label == "Google":
             texto_gerado = gerar_gemma(texto_base_escolhido)
             time.sleep(2.5)  # Gemma 3: 30 RPM → ~2.5s entre requests
+        elif label == "Anthropic":
+            texto_gerado = gerar_anthropic(texto_base_escolhido)
+            time.sleep(2.0)
         elif label == "Mistral":
             texto_gerado = gerar_mistral(texto_base_escolhido)
             time.sleep(1.5)
