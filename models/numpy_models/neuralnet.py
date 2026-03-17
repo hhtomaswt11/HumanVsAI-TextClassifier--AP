@@ -14,9 +14,9 @@ class NeuralNetwork:
                  loss=MeanSquaredError, metric:callable=mse, patience=10):
         self.epochs = epochs
         self.batch_size = batch_size
-        self.optimizer = Optimizer(learning_rate=learning_rate, momentum=momentum)
+        self.optimizer_proto = optimizer if optimizer is not None else Optimizer(learning_rate=learning_rate, momentum=momentum)
         self.verbose = verbose
-        self.loss = loss()
+        self.loss = loss() if isinstance(loss, type) else loss
         self.metric = metric
         self.patience = patience
 
@@ -28,9 +28,14 @@ class NeuralNetwork:
         if self.layers:
             layer.set_input_shape(input_shape=self.layers[-1].output_shape())
         if hasattr(layer, 'initialize'):
-            layer.initialize(self.optimizer)
+            layer.initialize(self.optimizer_proto)
         self.layers.append(layer)
         return self
+
+    def backward_propagation(self, error):
+        for layer in reversed(self.layers):
+            error = layer.backward_propagation(error)
+        return error
 
     def get_mini_batches(self, X, y=None, shuffle=True):
         n_samples = X.shape[0]
@@ -51,59 +56,61 @@ class NeuralNetwork:
             output = layer.forward_propagation(output, training=training)
         return output
 
-    def fit(self, dataset, val_dataset=None): # Adicionado val_dataset
+    def fit(self, dataset, val_dataset=None, patience=20):
         X = dataset.X
         y = dataset.y
+        if np.ndim(y) == 1:
+            y = np.expand_dims(y, axis=1)
+
+        self.history = {}
         best_val_loss = np.inf
-        wait = 0 
+        epochs_no_improve = 0
+        best_weights = None
 
         for epoch in range(1, self.epochs + 1):
-            epoch_loss = 0
-            
-            # Treino (Batch Processing)
+            output_x_ = []
+            y_ = []
             for X_batch, y_batch in self.get_mini_batches(X, y):
                 output = self.forward_propagation(X_batch, training=True)
-                epoch_loss += self.loss.loss(y_batch, output)
                 error = self.loss.derivative(y_batch, output)
-                
-                for layer in reversed(self.layers):
-                    error = layer.backward_propagation(error)
-            
-            # Perda média de treino
-            train_loss = epoch_loss / (X.shape[0] / self.batch_size)
-            
-            # CÁLCULO DA VALIDAÇÃO (Opcional mas crucial)
-            val_loss = None
+                self.backward_propagation(error)
+                output_x_.append(output)
+                y_.append(y_batch)
+
+            output_x_all = np.concatenate(output_x_)
+            y_all = np.concatenate(y_)
+            loss = self.loss.loss(y_all, output_x_all)
+            metric = self.metric(y_all, output_x_all) if self.metric else 'NA'
+            metric_s = f"{self.metric.__name__}: {metric:.4f}" if self.metric else "NA"
+
+            # Validação
+            val_loss_s = ""
             if val_dataset is not None:
                 val_output = self.forward_propagation(val_dataset.X, training=False)
                 val_loss = self.loss.loss(val_dataset.y, val_output)
-            
-            # LÓGICA DE EARLY STOPPING (Agora baseada na Validação se existir)
-            monitor_loss = val_loss if val_loss is not None else train_loss
-            
-            if monitor_loss < best_val_loss:
-                best_val_loss = monitor_loss
-                wait = 0
-            else:
-                wait += 1
-                if wait >= self.patience:
-                    if self.verbose:
-                        print(f"\n[Early Stopping] Parou na época {epoch}. Melhor Val Loss: {best_val_loss:.4f}")
-                    break
-            
-            # Guardar no histórico para os teus gráficos
-            all_preds = self.predict(X)
-            current_metric = self.metric(y, all_preds)
-            self.history[epoch] = {
-                'loss': train_loss, 
-                'val_loss': val_loss if val_loss is not None else 0,
-                'metric': current_metric
-            }
+                val_loss_s = f" - val_loss: {val_loss:.4f}"
 
+                # Early stopping
+                if val_loss < best_val_loss - 1e-4:
+                    best_val_loss = val_loss
+                    epochs_no_improve = 0
+                    best_weights = [np.copy(l.weights) if hasattr(l, 'weights') else None
+                                for l in self.layers]
+                else:
+                    epochs_no_improve += 1
+                    if epochs_no_improve >= patience:
+                        if self.verbose:
+                            print(f"\n[Early Stopping] Parou na época {epoch}. Melhor Val Loss: {best_val_loss:.4f}")
+                        # Restaurar melhores pesos
+                        for l, w in zip(self.layers, best_weights):
+                            if w is not None:
+                                l.weights = w
+                        break
+
+            self.history[epoch] = {'loss': loss, 'metric': metric}
             if self.verbose and (epoch % 10 == 0 or epoch == 1):
-                val_str = f" - val_loss: {val_loss:.4f}" if val_loss is not None else ""
-                print(f"Epoch {epoch}/{self.epochs} - loss: {train_loss:.4f}{val_str} - {self.metric.__name__}: {current_metric:.4f}")
-        
+                print(f"Epoch {epoch}/{self.epochs} - loss: {loss:.4f}{val_loss_s} - {metric_s}")
+
         return self
 
     def predict(self, dataset):

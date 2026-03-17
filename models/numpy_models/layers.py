@@ -35,10 +35,11 @@ class Layer(metaclass=ABCMeta):
 
 class DenseLayer(Layer):
     
-    def __init__(self, n_units, input_shape=None):
+    def __init__(self, n_units, input_shape=None, init_type='he'):
         super().__init__()
         self.n_units = n_units
         self._input_shape = input_shape
+        self.init_type = init_type
 
         self.input = None
         self.output = None
@@ -46,10 +47,22 @@ class DenseLayer(Layer):
         self.biases = None
         
     def initialize(self, optimizer):
-        # initialize weights from a 0 centered uniform distribution [-0.5, 0.5)
-        self.weights = np.random.rand(self.input_shape()[0], self.n_units) - 0.5
+        n_in, n_out = self.input_shape()[0], self.n_units
+        
+        if self.init_type == 'he':
+            # He Initialization: std = sqrt(2/n_in)
+            std = np.sqrt(2.0 / n_in)
+            self.weights = np.random.normal(0, std, (n_in, n_out))
+        elif self.init_type == 'xavier':
+            # Xavier/Glorot Initialization: std = sqrt(2/(n_in + n_out))
+            std = np.sqrt(2.0 / (n_in + n_out))
+            self.weights = np.random.normal(0, std, (n_in, n_out))
+        else:
+            # Original basic initialization
+            self.weights = np.random.rand(n_in, n_out) - 0.5
+            
         # initialize biases to 0
-        self.biases = np.zeros((1, self.n_units))
+        self.biases = np.zeros((1, n_out))
         self.w_opt = copy.deepcopy(optimizer)
         self.b_opt = copy.deepcopy(optimizer)
         return self
