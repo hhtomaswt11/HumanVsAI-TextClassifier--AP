@@ -38,6 +38,7 @@ def limpar_dataset(input_file, output_file):
         return texto_str
 
     df['Text'] = df['Text'].apply(limpar_prefixos)
+    df.drop_duplicates(subset=['Text'], inplace=True)
 
     def is_valid_text(texto):
         if pd.isna(texto):

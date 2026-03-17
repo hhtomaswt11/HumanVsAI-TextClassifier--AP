@@ -169,9 +169,16 @@ for label, nome_modelo in modelos_para_gerar.items():
 
     erros_consecutivos = 0
 
+    textos_humanos_disponiveis = textos_humanos.copy()
+    random.shuffle(textos_humanos_disponiveis)
+
     while textos_validos < OBJETIVO_POR_MODELO:
         
-        texto_base_escolhido = random.choice(textos_humanos)
+        if not textos_humanos_disponiveis:
+            print("Aviso: Já não há textos humanos únicos suficientes!")
+            break
+            
+        texto_base_escolhido = textos_humanos_disponiveis.pop()
 
         if label == "Google":
             texto_gerado = gerar_gemma(texto_base_escolhido)
