@@ -185,7 +185,7 @@ for label, nome_modelo in modelos_para_gerar.items():
             time.sleep(2.5)  # Gemma 3: 30 RPM → ~2.5s entre requests
         elif label == "Anthropic":
             texto_gerado = gerar_anthropic(texto_base_escolhido)
-            time.sleep(2.0)
+            time.sleep(1.5)
         else:
             texto_gerado = gerar_groq(nome_modelo, texto_base_escolhido)
             time.sleep(1.5)
