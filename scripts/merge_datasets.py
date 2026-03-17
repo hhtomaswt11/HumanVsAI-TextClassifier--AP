@@ -94,6 +94,11 @@ def merge_datasets():
 
     combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
 
+    # Enforce output schema and header capitalization.
+    combined = combined.rename(columns={'text': 'Text', 'label': 'Label'})
+    if 'Text' in combined.columns and 'Label' in combined.columns:
+        combined = combined[['Text', 'Label']]
+
     out_path = os.path.join(data_dir, OUTPUT_FILE)
     # Save CSV with ';' delimiter as requested.
     combined.to_csv(out_path, sep=';', index=False, encoding='utf-8')
