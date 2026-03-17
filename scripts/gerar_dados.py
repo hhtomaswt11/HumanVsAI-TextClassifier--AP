@@ -13,7 +13,7 @@ CONTENT_TYPE_JSON = "application/json"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
@@ -24,8 +24,7 @@ if GEMINI_API_KEY:
 
 if not GROQ_API_KEY:
     print("Aviso: GROQ_API_KEY em falta. A classe 'Meta' será ignorada.")
-if not MISTRAL_API_KEY:
-    print("Aviso: MISTRAL_API_KEY em falta. A classe 'Mistral' será ignorada.")
+
 if not GEMINI_API_KEY:
     print("Aviso: GEMINI_API_KEY em falta. A classe 'Google' será ignorada.")
 if not ANTHROPIC_API_KEY:
@@ -37,7 +36,7 @@ def gerar_groq(modelo, texto_original):
         return None
     prompt = (
         "You are an expert scientist. Rewrite the following scientific text in your own words. "
-        "The new text MUST be strictly between 80 and 160 words long. "
+        "The new text MUST be strictly between 100 and 120 words long. "
         "Maintain a formal, scientific and encyclopedia-style tone. "
         "Do not include titles, introductory remarks, concluding remarks, or the word count. "
         f"Original text to rewrite:\n{texto_original}"
@@ -54,47 +53,12 @@ def gerar_groq(modelo, texto_original):
         print(f"Erro Groq: {e}")
         return None
 
-def gerar_mistral(texto_original):
-    if not MISTRAL_API_KEY:
-        return None
-    prompt = (
-        "You are an expert scientist. Rewrite the following scientific text in your own words. "
-        "The new text MUST be strictly between 80 and 160 words long. "
-        "Maintain a formal, scientific and encyclopedia-style tone. "
-        "Do not include titles, introductory remarks, concluding remarks, or the word count. "
-        f"Original text to rewrite:\n{texto_original}"
-    )
-    
-    url = "https://api.mistral.ai/v1/chat/completions"
-    headers = {
-        "Content-Type": CONTENT_TYPE_JSON,
-        "Accept": "application/json",
-        "Authorization": f"Bearer {MISTRAL_API_KEY}"
-    }
-    data = {
-        "model": "mistral-small-latest",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 250
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content'].strip()
-        else:
-            print(f"Erro Mistral (Status {response.status_code}): {response.text}")
-            return None
-    except Exception as e:
-        print(f"Erro Mistral Python: {e}")
-        return None
-
 def gerar_anthropic(texto_original):
     if not ANTHROPIC_API_KEY:
         return None
     prompt = (
         "You are an expert scientist. Rewrite the following scientific text in your own words. "
-        "The new text MUST be strictly between 80 and 160 words long. "
+        "The new text MUST be strictly between 100 and 120 words long. "
         "Maintain a formal, scientific and encyclopedia-style tone. "
         "Do not include titles, introductory remarks, concluding remarks, or the word count. "
         f"Original text to rewrite:\n{texto_original}"
@@ -127,7 +91,7 @@ def gerar_anthropic(texto_original):
         print(f"Erro Anthropic Python: {e}")
         return None
 
-def truncar_para_limite(texto, max_palavras=160):
+def truncar_para_limite(texto, max_palavras=120):
     """Se o texto tiver mais de max_palavras, corta na última frase que caiba."""
     palavras = texto.split()
     if len(palavras) <= max_palavras:
@@ -145,7 +109,7 @@ def gerar_gemma(texto_original):
     prompt = (
         "You are an expert scientist. Write a single paragraph that rewrites the following scientific text in your own words. "
         "CRITICAL RULES: (1) Write ONLY ONE paragraph with NO line breaks. "
-        "(2) The paragraph MUST contain between 80 and 120 words — count carefully. "
+        "(2) The paragraph MUST contain between 100 and 120 words — count carefully. "
         "(3) Use a formal, scientific, encyclopedia-style tone. "
         "(4) Do NOT include titles, headers, bullet points, word count, or any commentary. "
         "(5) Output ONLY the rewritten paragraph, nothing else.\n\n"
@@ -155,21 +119,21 @@ def gerar_gemma(texto_original):
         response = gemini_model.generate_content(prompt)
         texto = response.text.strip()
         primeiro_paragrafo = texto.split('\n\n')[0].replace('\n', ' ').strip()
-        return truncar_para_limite(primeiro_paragrafo, max_palavras=160)
+        return truncar_para_limite(primeiro_paragrafo, max_palavras=120)
     except Exception as e:
         print(f"Erro Gemini: {e}")
         return None
 
 modelos_para_gerar = {
     "Meta":    "llama-3.1-8b-instant",
-    "Mistral": "mistral-small-latest",
+
     "Google":  "gemma-3-27b-it",
     "Anthropic": "claude-haiku-4-5",
 }
 
-OBJETIVO_POR_MODELO = 600
+OBJETIVO_POR_MODELO = 1000
 
-NOME_FICHEIRO = "../data/dataset_final.csv" 
+NOME_FICHEIRO = "../data/dataset_limpo.csv" 
 print(f"A carregar o ficheiro: {NOME_FICHEIRO}...")
 
 try:
@@ -188,17 +152,17 @@ print("\nA iniciar a reescrita de dados sintéticos...")
 
 chave_necessaria_por_label = {
     "Meta": GROQ_API_KEY,
-    "Mistral": MISTRAL_API_KEY,
     "Google": GEMINI_API_KEY,
     "Anthropic": ANTHROPIC_API_KEY,
 }
+
 
 for label, nome_modelo in modelos_para_gerar.items():
     if not chave_necessaria_por_label.get(label):
         print(f"\n--- A IGNORAR A CLASSE: {label} (API key em falta) ---")
         continue
 
-    textos_validos = sum(1 for linha in resultados if linha['Label'] == label)
+    textos_validos = sum(1 for linha in resultados if linha['Label'] == label and 100 <= len(str(linha['Text']).split()) <= 120)
     
     print(f"\n--- A GERAR PARA A CLASSE: {label} ---")
     print(f"Já existem {textos_validos} textos desta IA no ficheiro. Faltam gerar {max(0, OBJETIVO_POR_MODELO - textos_validos)}.")
@@ -215,9 +179,6 @@ for label, nome_modelo in modelos_para_gerar.items():
         elif label == "Anthropic":
             texto_gerado = gerar_anthropic(texto_base_escolhido)
             time.sleep(2.0)
-        elif label == "Mistral":
-            texto_gerado = gerar_mistral(texto_base_escolhido)
-            time.sleep(1.5)
         else:
             texto_gerado = gerar_groq(nome_modelo, texto_base_escolhido)
             time.sleep(1.5)
@@ -229,7 +190,7 @@ for label, nome_modelo in modelos_para_gerar.items():
             erros_consecutivos = 0
             word_count = len(texto_gerado.split())
             
-            if 80 <= word_count <= 160:
+            if 100 <= word_count <= 120:
                 textos_validos += 1
                 texto_limpo = texto_gerado.replace('\n', ' ').replace('\r', ' ')
 
@@ -249,7 +210,7 @@ for label, nome_modelo in modelos_para_gerar.items():
             time.sleep(5) 
             
             if erros_consecutivos >= 3:
-                print(f"\n⚠️ LIMITE DIÁRIO ATINGIDO PARA {label}! A guardar progresso e a passar à próxima IA...")
+                print(f"\nLIMITE DIÁRIO ATINGIDO PARA {label}! A guardar progresso e a passar à próxima IA...")
                 break 
 
 print("\nGeração concluída! A guardar o ficheiro final...")

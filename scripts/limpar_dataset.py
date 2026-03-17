@@ -44,17 +44,20 @@ def limpar_dataset(input_file, output_file):
             return False
             
         texto_str = str(texto).strip()
+        word_count = len(texto_str.split())
         
-        # Aceitamos textos que terminem de forma "fechada"
-        # Adicionei o parêntese ")" porque alguns abstracts terminam com "(abridged)" ou anos.
-        return texto_str.endswith(('.', '!', '?', '"', "'", "”", "’", ")"))
+        # Aceitamos textos que terminem de forma "fechada" e entre 100 a 120 palavras
+        return (100 <= word_count <= 120) and texto_str.endswith(('.', '!', '?', '"', "'", "”", "’", ")"))
 
     df_limpo = df[df['Text'].apply(is_valid_text)].copy()
+    
+    # Remover a classe Mistral
+    df_limpo = df_limpo[df_limpo['Label'] != 'Mistral']
     
     total_final = len(df_limpo)
     removidos = total_inicial - total_final
     
-    print(f"\nTextos truncados removidos: {removidos}")
+    print(f"\nTextos truncados ou removidos (inclui Mistral): {removidos}")
     print(f"Total de linhas no dataset limpo: {total_final}")
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
