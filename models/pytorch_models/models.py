@@ -1,6 +1,13 @@
 import torch
 import torch.nn as nn
 
+
+def _masked_mean_pool(sequence_output: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    mask = (tokens != 0).unsqueeze(-1).float()
+    summed = (sequence_output * mask).sum(dim=1)
+    lengths = mask.sum(dim=1).clamp(min=1.0)
+    return summed / lengths
+
 class BaselineClassifier(nn.Module):
     # input_dim  : numero de features de input (TF-IDF)
     # n_classes  : numero de classes de output (5)
@@ -144,16 +151,10 @@ class LSTMClassifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         embedded = self.embedding(x)                           # (B, L, E)
-        _, (hidden, _) = self.lstm(embedded)                   # hidden: (layers*dirs, B, H)
-
-        if self.bidirectional:
-            # Concatenate last forward and last backward hidden states
-            last_hidden = torch.cat((hidden[-2], hidden[-1]), dim=1)  # (B, 2H)
-        else:
-            last_hidden = hidden[-1]                                    # (B, H)
-
-        last_hidden = self.dropout(last_hidden)
-        return self.fc(last_hidden)                            # (B, n_classes)
+        output, _ = self.lstm(embedded)                        # output: (B, L, H*dirs)
+        pooled = _masked_mean_pool(output, x)                  # (B, H*dirs)
+        pooled = self.dropout(pooled)
+        return self.fc(pooled)                                 # (B, n_classes)
 
 
 class GRUClassifier(nn.Module):
@@ -192,12 +193,7 @@ class GRUClassifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         embedded = self.embedding(x)              # (B, L, E)
-        _, hidden = self.gru(embedded)            # hidden: (layers*dirs, B, H)
-
-        if self.bidirectional:
-            last_hidden = torch.cat((hidden[-2], hidden[-1]), dim=1)  # (B, 2H)
-        else:
-            last_hidden = hidden[-1]                                    # (B, H)
-
-        last_hidden = self.dropout(last_hidden)
-        return self.fc(last_hidden)               # (B, n_classes)
+        output, _ = self.gru(embedded)            # output: (B, L, H*dirs)
+        pooled = _masked_mean_pool(output, x)     # (B, H*dirs)
+        pooled = self.dropout(pooled)
+        return self.fc(pooled)                    # (B, n_classes)

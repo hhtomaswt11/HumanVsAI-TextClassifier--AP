@@ -28,6 +28,7 @@ def train(
     epochs: int = 50,
     lr: float = 0.001,
     patience: int = 10,
+    weight_decay: float = 1e-4,
     verbose: bool = True,
 ) -> dict:
 
@@ -38,13 +39,17 @@ def train(
     # epochs: número máximo de épocas
     # lr: taxa de aprendizado para Adam
     # patience: paciência de early-stopping (épocas sem melhora)
+    # weight_decay: regularização L2 no optimizador Adam
     # verbose: se True, imprime métricas a cada época
 
     if criterion is None:
         criterion = nn.CrossEntropyLoss()
 
     model.to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
+    )
 
     history = {
         "train_loss": [],
@@ -54,6 +59,7 @@ def train(
     }
 
     best_val_loss = float("inf")
+    best_state_dict = None
     wait = 0
 
     for epoch in range(1, epochs + 1):
@@ -85,9 +91,12 @@ def train(
                 f"val_loss: {val_loss:.4f} | val_acc: {val_acc:.4f}"
             )
 
-        # Early stopping
+        scheduler.step(val_loss)
+
+        # Early stopping — save best model weights
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            best_state_dict = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             wait = 0
         else:
             wait += 1
@@ -98,6 +107,11 @@ def train(
                         f"Best val_loss: {best_val_loss:.4f}"
                     )
                 break
+
+    # Restore the weights from the best epoch
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
+        model.to(DEVICE)
 
     return history
 

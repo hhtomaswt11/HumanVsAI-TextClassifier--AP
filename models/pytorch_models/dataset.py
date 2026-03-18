@@ -49,7 +49,9 @@ class TfidfDataset(Dataset): # Dataset com vetores TF-IDF
         if train:
             self.vectorizer = TfidfVectorizer(
                 max_features=max_words,
-                stop_words="english",
+                ngram_range=(1, 2),   # unigrams + bigrams
+                sublinear_tf=True,    # log normalization of term frequencies
+                min_df=2,             # ignore terms that appear in only 1 document
             )
             X = self.vectorizer.fit_transform(texts).toarray()
         else:
