@@ -2,14 +2,14 @@
 
 Este repositório contém o trabalho desenvolvido para a unidade curricular de **Aprendizagem Profunda**. O objetivo do projeto é classificar textos entre 5 autores: **Humano, Google, Meta, Anthropic e OpenAI**.
 
-## 👥 Grupo 
+## Grupo 
 * **Aluno 1:** Rodrigo Miguel Granja Ferreira (pg60392)
 * **Aluno 2:** Tomás Henrique Alves Melo (pg60018)
 * **Aluno 3:** Luís Pinto da Cunha (pg60280)
 * **Aluno 4:** Nuno Filipe Leite Oliveira Araújo (pg61218)
 
 
-## 📂 Organização do Repositório
+## Organização do Repositório
 
 O projeto está estruturado de forma modular para separar a lógica de processamento, os modelos e a experimentação:
 
