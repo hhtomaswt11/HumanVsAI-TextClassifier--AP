@@ -1,12 +1,12 @@
 # Projeto de AP: Deteção de Texto Humano vs IA
 
-Este repositório contém o trabalho desenvolvido para a unidade curricular de **Aprendizagem Profunda**. O objetivo do projeto é classificar textos entre 5 autores: **Humano, Google, Meta, Mistral e OpenAI**.
+Este repositório contém o trabalho desenvolvido para a unidade curricular de **Aprendizagem Profunda**. O objetivo do projeto é classificar textos entre 5 autores: **Humano, Google, Meta, Anthropic e OpenAI**.
 
 ## 👥 Grupo 
 * **Aluno 1:** Rodrigo Miguel Granja Ferreira (pg60392)
-* **Aluno 2:** [Nome] ([Número])
-* **Aluno 3:** [Nome] ([Número])
-* **Aluno 4:** [Nome] ([Número])
+* **Aluno 2:** Tomás Henrique Alves Melo (pg60018)
+* **Aluno 3:** Luís Pinto da Cunha (pg60280)
+* **Aluno 4:** Nuno Filipe Leite Oliveira Araújo (pg61218)
 
 
 ## 📂 Organização do Repositório
