@@ -5,6 +5,24 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
+
+def self_attention(input_sequence):
+    output = np.zeros(shape=input_sequence.shape)
+    for i, pivot_vector in enumerate(input_sequence):
+        scores = np.zeros(shape=(len(input_sequence),))
+        for j, vector in enumerate(input_sequence):
+            scores[j] = np.dot(pivot_vector, vector.T)
+        scores /= np.sqrt(input_sequence.shape[1])
+        scores = softmax(scores)
+        new_pivot_representation = np.zeros(shape=pivot_vector.shape)
+        for j, vector in enumerate(input_sequence):
+            new_pivot_representation += vector * scores[j]
+        output[i] = new_pivot_representation
+    return output
+
 def one_hot_encode(labels):
     classes = sorted(pd.Series(labels).unique().tolist())
     class_to_idx = {c: i for i, c in enumerate(classes)}
@@ -208,7 +226,6 @@ def classification_report_np(y_true, y_pred, labels):
     lines.append(f"{'weighted avg':<14}{w_p:>10.4f}{w_r:>10.4f}{w_f:>10.4f}{total:>10d}")
     return '\n'.join(lines)
 
-
 def prepare_label_arrays(y_train_arr, y_val_arr, y_test_arr):
     labels_local = sorted(np.unique(y_train_arr).tolist())
     class_to_idx_local = {label: i for i, label in enumerate(labels_local)}
@@ -235,7 +252,6 @@ def prepare_label_arrays(y_train_arr, y_val_arr, y_test_arr):
         'y_test_oh': y_test_oh_local,
     }
 
-
 def build_vectorized_datasets(X_train_arr, X_val_arr, X_test_arr, y_train_oh_arr, y_val_oh_arr, y_test_oh_arr, vectorizer_params):
     vectorizer_local = NumpyTfidfVectorizer(**vectorizer_params)
     X_train_vec_local = vectorizer_local.fit_transform(X_train_arr)
@@ -256,7 +272,6 @@ def build_vectorized_datasets(X_train_arr, X_val_arr, X_test_arr, y_train_oh_arr
         'test_ds': test_ds_local,
     }
 
-
 def balanced_accuracy_from_preds(y_true_str, y_pred_str, class_labels):
     cm_local = confusion_matrix_np(y_true_str, y_pred_str, class_labels)
     recalls = []
@@ -264,7 +279,6 @@ def balanced_accuracy_from_preds(y_true_str, y_pred_str, class_labels):
         support = cm_local[i, :].sum()
         recalls.append((cm_local[i, i] / support) if support > 0 else 0.0)
     return float(np.mean(recalls))
-
 
 def apply_human_confidence_rule(probs, class_labels, human_class_idx, threshold):
     pred_idx = np.argmax(probs, axis=1)
@@ -277,7 +291,6 @@ def apply_human_confidence_rule(probs, class_labels, human_class_idx, threshold)
 
     adjusted_idx[switch_mask] = second_idx[switch_mask]
     return np.array([class_labels[i] for i in adjusted_idx])
-
 
 def tune_human_threshold(probs, y_true_str, class_labels, human_class_idx, threshold_grid=None):
     if threshold_grid is None:
