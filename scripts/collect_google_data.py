@@ -45,8 +45,8 @@ def gerar_gemini(topic):
         print(f"Erro Gemini para o tópico '{topic}': {e}")
         return None
 
-TOPICS_FILE = "temas.txt"
-OUTPUT_FILE = "dataset_google.csv"
+TOPICS_FILE = "temas_novos.txt"
+OUTPUT_FILE = "dataset_google1.csv"
 RETRIES_PER_TOPIC = 3
 
 if not os.path.exists(TOPICS_FILE):

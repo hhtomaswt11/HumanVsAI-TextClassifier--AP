@@ -51,8 +51,8 @@ def gerar_meta(topic):
         print(f"Erro Meta para o tópico '{topic}': {e}")
         return None
 
-TOPICS_FILE = "temas.txt"
-OUTPUT_FILE = "dataset_meta.csv"
+TOPICS_FILE = "temas_meta.txt"
+OUTPUT_FILE = "dataset_meta1.csv"
 RETRIES_PER_TOPIC = 3
 
 if not os.path.exists(TOPICS_FILE):

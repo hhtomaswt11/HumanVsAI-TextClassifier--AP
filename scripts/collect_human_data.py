@@ -136,8 +136,8 @@ def search_wikipedia_candidates(topic, max_results=5):
     return []
 
 def main():
-    input_file = "temas.txt"
-    output_file = "dataset_human.csv"
+    input_file = "temas_novos.txt"
+    output_file = "dataset_human1.csv"
     MAX_RETRIES = 5
     MAX_CANDIDATES = 5
     
@@ -151,7 +151,7 @@ def main():
     print(f"Found {len(topics)} topics. Starting fetch...")
 
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['topic', 'text', 'label', 'model']
+        fieldnames = ['text', 'label']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 

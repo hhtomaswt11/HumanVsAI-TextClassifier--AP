@@ -87,8 +87,8 @@ def gerar_iaedu(topic):
         return None
 
 # 3. Execução Principal
-TOPICS_FILE = "temas.txt"
-OUTPUT_FILE = "dataset_iaedu.csv"
+TOPICS_FILE = "temas_openai.txt"
+OUTPUT_FILE = "dataset_openai1.csv"
 RETRIES_PER_TOPIC = 3
 
 if not os.path.exists(TOPICS_FILE):
