@@ -200,10 +200,17 @@ class MultiHeadSelfAttention:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _softmax(x):
-        x = x - x.max(axis=-1, keepdims=True)
-        e = np.exp(x)
-        return e / (e.sum(axis=-1, keepdims=True) + 1e-9)
+    def _softmax(x, mask=None):
+        if mask is None:
+            x = x - x.max(axis=-1, keepdims=True)
+            e = np.exp(x)
+            return e / (e.sum(axis=-1, keepdims=True) + 1e-9)
+
+        m = mask.astype(float)
+        x = np.where(m > 0, x, -1e9)
+        x = x - np.max(x, axis=-1, keepdims=True)
+        e = np.exp(x) * m
+        return e / (np.sum(e, axis=-1, keepdims=True) + 1e-9)
 
     def _split_heads(self, x):
         """(B, L, d_model)  →  (B, n_heads, L, d_k)"""
@@ -216,7 +223,7 @@ class MultiHeadSelfAttention:
         return x.transpose(0, 2, 1, 3).reshape(B, L, self.d_model)
 
     # ------------------------------------------------------------------
-    def forward(self, x, training: bool = True):
+    def forward(self, x, training: bool = True, pad_mask=None):
         """x: (B, L, d_model)  →  (B, L, d_model)"""
         self._x = x
 
@@ -230,17 +237,30 @@ class MultiHeadSelfAttention:
 
         # Scaled dot-product attention
         scores = Q_h @ K_h.transpose(0, 1, 3, 2) / np.sqrt(self.d_k)  # (B, H, L, L)
-        attn   = self._softmax(scores)        # (B, H, L, L)
+        key_mask = None
+        query_mask = None
+        token_mask_3d = None
+        if pad_mask is not None:
+            key_mask = pad_mask[:, np.newaxis, np.newaxis, :]
+            query_mask = pad_mask[:, np.newaxis, :, np.newaxis]
+            token_mask_3d = pad_mask[:, :, np.newaxis]
+        attn   = self._softmax(scores, mask=key_mask)        # (B, H, L, L)
 
         context = attn @ V_h                  # (B, H, L, d_k)
+        if query_mask is not None:
+            context = context * query_mask
         context = self._merge_heads(context)  # (B, L, d_model)
 
         out = context @ self.W_O + self.b_O  # (B, L, d_model)
+        if token_mask_3d is not None:
+            out = out * token_mask_3d
 
         # Cache for backward
         self._Q_h, self._K_h, self._V_h = Q_h, K_h, V_h
         self._attn    = attn
         self._context = context
+        self._pad_mask = token_mask_3d
+        self._query_mask = query_mask
         return out
 
     # ------------------------------------------------------------------
@@ -250,12 +270,17 @@ class MultiHeadSelfAttention:
         d  = self.d_model
         fl = lambda t: t.reshape(-1, d)
 
+        if self._pad_mask is not None:
+            grad = grad * self._pad_mask
+
         # Output projection
         d_W_O = self._context.reshape(-1, d).T @ grad.reshape(-1, d)
         d_b_O = grad.sum(axis=(0, 1))
         d_ctx = grad @ self.W_O.T             # (B, L, d_model)
 
         d_ctx_h = self._split_heads(d_ctx)    # (B, H, L, d_k)
+        if self._query_mask is not None:
+            d_ctx_h = d_ctx_h * self._query_mask
 
         # Gradient w.r.t. attention weights and V
         d_attn = d_ctx_h @ self._V_h.transpose(0, 1, 3, 2)     # (B, H, L, L)
@@ -388,10 +413,10 @@ class TransformerBlock:
         return grad * mask if mask is not None else grad
 
     # ------------------------------------------------------------------
-    def forward(self, x, training: bool = True):
+    def forward(self, x, training: bool = True, pad_mask=None):
         """x: (B, L, d_model)  →  (B, L, d_model)"""
         # Sub-layer 1: self-attention + residual + LN
-        attn_out = self.attention.forward(x, training=training)
+        attn_out = self.attention.forward(x, training=training, pad_mask=pad_mask)
         attn_out = self._dropout_fwd(attn_out, "_mask1", training)
         x1       = self.norm1.forward(x + attn_out, training=training)
         self._x1 = x1
@@ -464,6 +489,7 @@ class TransformerClassifier:
         epochs:     int   = 30,
         batch_size: int   = 32,
         optimizer         = None,
+        class_weights     = None,
         patience:   int   = 10,
         verbose:    int   = 5,
     ):
@@ -478,6 +504,7 @@ class TransformerClassifier:
         self.epochs       = epochs
         self.batch_size   = batch_size
         self.optimizer    = optimizer
+        self.class_weights = None if class_weights is None else np.array(class_weights, dtype=float)
         self.patience     = patience
         self.verbose      = verbose
         self.history: dict = {}
@@ -515,12 +542,15 @@ class TransformerClassifier:
     # ------------------------------------------------------------------
     def _forward(self, X_idx, training: bool = True):
         """X_idx: (B, L)  →  probs: (B, n_classes)"""
+        token_mask = (X_idx != SimpleTokenizer.PAD_IDX).astype(float)
         x = self._embedding.forward(X_idx, training)  # (B, L, E)
         x = self._pos_enc.forward(x, training)
         for block in self._blocks:
-            x = block.forward(x, training)
+            x = block.forward(x, training, pad_mask=token_mask)
         self._seq_len = x.shape[1]
-        self._pooled  = x.mean(axis=1)                # (B, E) — global avg pool
+        self._token_mask_3d = token_mask[:, :, np.newaxis]
+        self._token_counts = np.maximum(token_mask.sum(axis=1, keepdims=True), 1.0)
+        self._pooled  = (x * self._token_mask_3d).sum(axis=1) / self._token_counts
         logits        = self._pooled @ self._W_cls + self._b_cls
         return self._softmax(logits)
 
@@ -537,10 +567,11 @@ class TransformerClassifier:
         self._W_cls = self._opt_W.update(self._W_cls, d_W)
         self._b_cls = self._opt_b.update(self._b_cls, d_b)
 
-        # Global average pool backward
+        # Global average pool backward (masked)
         d_x = np.repeat(
             d_pooled[:, np.newaxis, :], self._seq_len, axis=1
-        ) / self._seq_len                                   # (B, L, E)
+        ) / self._token_counts[:, np.newaxis, :]           # (B, L, E)
+        d_x *= self._token_mask_3d
 
         # Transformer blocks (in reverse order)
         for block in reversed(self._blocks):
@@ -554,11 +585,17 @@ class TransformerClassifier:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _ce_loss_and_grad(y_oh, probs):
+    def _ce_loss_and_grad(y_oh, probs, class_weights=None):
         """Categorical cross-entropy loss + combined softmax-CE gradient."""
         p    = np.clip(probs, 1e-15, 1.0)
-        loss = -np.mean(np.sum(y_oh * np.log(p), axis=1))
-        grad = (probs - y_oh) / y_oh.shape[0]   # combined softmax + CE gradient
+        ce_per_sample = -np.sum(y_oh * np.log(p), axis=1)
+        if class_weights is None:
+            sample_weights = np.ones_like(ce_per_sample)
+        else:
+            sample_weights = y_oh @ class_weights
+        norm = np.maximum(np.sum(sample_weights), 1e-9)
+        loss = np.sum(ce_per_sample * sample_weights) / norm
+        grad = ((probs - y_oh) * sample_weights[:, np.newaxis]) / norm
         return loss, grad
 
     # ------------------------------------------------------------------
@@ -588,22 +625,20 @@ class TransformerClassifier:
                 X_b   = X_idx[start:end]
                 y_b   = y_oh[start:end]
                 probs = self._forward(X_b, training=True)
-                _, g  = self._ce_loss_and_grad(y_b, probs)
+                _, g  = self._ce_loss_and_grad(y_b, probs, class_weights=self.class_weights)
                 self._backward(g)
                 ep_probs.append(probs)
                 ep_y.append(y_b)
 
             ep_probs = np.concatenate(ep_probs)
             ep_y     = np.concatenate(ep_y)
-            tr_loss  = -np.mean(np.sum(ep_y * np.log(np.clip(ep_probs, 1e-15, 1)), axis=1))
+            tr_loss, _ = self._ce_loss_and_grad(ep_y, ep_probs, class_weights=self.class_weights)
             tr_acc   = (np.argmax(ep_probs, axis=1) == np.argmax(ep_y, axis=1)).mean()
 
             val_str = ""
             if X_val is not None and y_val_oh is not None:
                 val_probs = self._forward(X_val, training=False)
-                val_loss  = -np.mean(
-                    np.sum(y_val_oh * np.log(np.clip(val_probs, 1e-15, 1)), axis=1)
-                )
+                val_loss, _ = self._ce_loss_and_grad(y_val_oh, val_probs, class_weights=self.class_weights)
                 val_str = f" | val_loss: {val_loss:.4f}"
 
                 if val_loss < best_val - 1e-4:
