@@ -26,3 +26,8 @@ O projeto está estruturado de forma modular:
 *   **`Subm1/`, `Subm2/`, `Subm3/`**: Resultados e notebooks de submissão para as diferentes etapas do projeto.
 *   **`Apresentacao/`**: Apresentação do projeto (vídeo).
 *   **`subm*.csv`**: Datasets usados na predição das 3 submissões.
+
+
+## Avaliação Final 
+
+**Nota:** **18/20**
